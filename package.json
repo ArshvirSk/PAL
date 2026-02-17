@@ -4,9 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:backend\"",
     "build": "next build",
+    "build:backend": "cd backend && npm run build",
     "start": "next start",
-    "lint": "eslint"
+    "start:backend": "cd backend && npm start",
+    "lint": "eslint",
+    "setup:backend": "cd backend && npm install"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
