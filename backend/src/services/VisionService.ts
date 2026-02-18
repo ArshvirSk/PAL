@@ -46,7 +46,7 @@ class VisionService {
    */
   async performOCR(imageBuffer: Buffer, mimeType: string): Promise<OCRResult> {
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');
@@ -91,7 +91,7 @@ class VisionService {
     documentType: string
   ): Promise<{ data: ExtractedData; confidence: number }> {
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
       const base64Image = imageBuffer.toString('base64');
 
@@ -130,7 +130,7 @@ class VisionService {
    */
   async assessQuality(imageBuffer: Buffer, mimeType: string): Promise<DocumentQuality> {
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
       const base64Image = imageBuffer.toString('base64');
 

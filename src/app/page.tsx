@@ -77,19 +77,19 @@ export default function Home() {
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              href="/dashboard"
+              href="/login"
               className="group flex h-14 items-center gap-2 rounded-full bg-foreground px-8 text-base font-semibold text-background transition-all hover:scale-[1.02] hover:shadow-lg"
             >
               <Bot className="h-5 w-5" />
-              Get Started
+              Login to P.A.L.
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <Link
-              href="/chat"
+              href="#features"
               className="flex h-14 items-center gap-2 rounded-full border border-border px-8 text-base font-semibold transition-all hover:bg-secondary neu-flat"
             >
               <MessageCircle className="h-5 w-5" />
-              Talk to P.A.L.
+              Learn More
             </Link>
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section className="px-6 py-24">
+      <section id="features" className="px-6 py-24">
         <div className="mx-auto max-w-5xl">
           <div className="mb-16 text-center">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">

@@ -4,6 +4,8 @@ import { logger } from '../utils/logger';
 import { Document } from '../models/Document';
 import { TrafficLightStatus } from '../models/types';
 import VisionService from './VisionService';
+import QueueService from './QueueService';
+import UserService from './UserService';
 
 type DocumentStatus = TrafficLightStatus | 'processing';
 
@@ -65,9 +67,12 @@ class DocumentService {
 
       logger.info(`Document uploaded: ${document.id}`);
 
-      // Trigger async processing
-      this.processDocument(document.id, file.buffer, file.mimetype, documentType).catch(err => {
-        logger.error(`Error processing document ${document.id}:`, err);
+      // Add to processing queue
+      await QueueService.addDocumentProcessingJob({
+        documentId: document.id,
+        userId,
+        documentType,
+        fileUrl: urlData.publicUrl
       });
 
       return document;
@@ -281,6 +286,17 @@ class DocumentService {
       });
 
       logger.info(`Document ${documentId} processed successfully with status: ${status}`);
+
+      // Step 6: Send notifications based on status
+      const document = await DocumentRepository.findById(documentId);
+      if (document) {
+        await this.sendDocumentNotification(document, status);
+        
+        // Update user progress if document is verified
+        if (status === 'green') {
+          await UserService.updateTaskProgress(document.user_id, documentId, 'completed');
+        }
+      }
     } catch (error) {
       logger.error(`Error processing document ${documentId}:`, error);
 
@@ -291,6 +307,51 @@ class DocumentService {
       }).catch(err => {
         logger.error(`Failed to update document status after error:`, err);
       });
+    }
+  }
+
+  /**
+   * Send notification based on document status
+   */
+  private async sendDocumentNotification(document: Document, status: DocumentStatus): Promise<void> {
+    try {
+      let notificationType: 'document_verified' | 'document_rejected' | 'document_needs_review';
+      let message: string;
+      let priority = 5;
+
+      switch (status) {
+        case 'green':
+          notificationType = 'document_verified';
+          message = `Your ${document.document_type} has been verified successfully! ✅`;
+          priority = 3;
+          break;
+        case 'red':
+          notificationType = 'document_rejected';
+          message = `Your ${document.document_type} was rejected. Please upload a clearer image. ❌`;
+          priority = 2;
+          break;
+        case 'yellow':
+          notificationType = 'document_needs_review';
+          message = `Your ${document.document_type} is under review. We'll notify you once it's verified. ⏳`;
+          priority = 4;
+          break;
+        default:
+          return;
+      }
+
+      // Add notification to queue
+      await QueueService.addNotificationJob({
+        userId: document.user_id,
+        type: notificationType,
+        documentId: document.id,
+        message,
+        priority
+      });
+
+      logger.info(`Notification queued for document ${document.id} with status ${status}`);
+    } catch (error) {
+      logger.error(`Error sending document notification:`, error);
+      // Don't throw - notification failure shouldn't break document processing
     }
   }
 }

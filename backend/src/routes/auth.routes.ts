@@ -90,17 +90,20 @@ router.post(
       }
 
       res.json({
+        success: true,
         message: 'Login successful',
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        user: {
-          id: result.user.id,
-          name: result.user.name,
-          email: result.user.email,
-          admissionNumber: result.user.admission_number,
-          branch: result.user.branch,
-          currentPhase: result.user.current_phase,
-          role: result.user.role
+        data: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          user: {
+            id: result.user.id,
+            name: result.user.name,
+            email: result.user.email,
+            admissionNumber: result.user.admission_number,
+            branch: result.user.branch,
+            currentPhase: result.user.current_phase,
+            role: result.user.role
+          }
         }
       });
     } catch (error) {

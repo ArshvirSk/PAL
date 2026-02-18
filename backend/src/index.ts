@@ -23,6 +23,15 @@ import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import taskRoutes from './routes/task.routes';
 import documentRoutes from './routes/document.routes';
+import chatRoutes from './routes/chat.routes';
+import notificationRoutes from './routes/notification.routes';
+import socialRoutes from './routes/social.routes';
+import adminRoutes from './routes/admin.routes';
+
+// Initialize workers (after env check)
+import './workers/documentProcessor';
+import './workers/notificationWorker';
+logger.info('✅ Background workers initialized');
 
 const app: Application = express();
 const PORT = process.env.PORT || 3001;
@@ -32,7 +41,7 @@ app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL 
-    : 'http://localhost:3000',
+    : true, // Allow all origins in development
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -70,6 +79,10 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/tasks', taskRoutes);
 app.use('/api/v1/documents', documentRoutes);
+app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/social', socialRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -105,6 +118,10 @@ server.listen(PORT, () => {
   logger.info(`👤 User endpoints: http://localhost:${PORT}/api/v1/users`);
   logger.info(`✅ Task endpoints: http://localhost:${PORT}/api/v1/tasks`);
   logger.info(`📄 Document endpoints: http://localhost:${PORT}/api/v1/documents`);
+  logger.info(`💬 Chat endpoints: http://localhost:${PORT}/api/v1/chat`);
+  logger.info(`🔔 Notification endpoints: http://localhost:${PORT}/api/v1/notifications`);
+  logger.info(`👥 Social endpoints: http://localhost:${PORT}/api/v1/social`);
+  logger.info(`⚙️  Admin endpoints: http://localhost:${PORT}/api/v1/admin`);
 });
 
 // Graceful shutdown

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Upload,
   FileImage,
@@ -13,6 +13,7 @@ import {
   Trash2,
   Shield,
 } from "lucide-react";
+import api from "@/lib/api";
 
 type DocStatus = "idle" | "uploading" | "processing" | "approved" | "review" | "rejected";
 
@@ -27,45 +28,6 @@ type Document = {
   reason?: string;
 };
 
-const mockDocuments: Document[] = [
-  {
-    id: "1",
-    name: "12th_marksheet.jpg",
-    type: "Marksheet",
-    size: "2.4 MB",
-    status: "approved",
-    confidence: 0.97,
-    extractedData: {
-      Name: "Rahul Sharma",
-      Board: "CBSE",
-      "Roll No": "8234567",
-      Percentage: "85.4%",
-      Year: "2025",
-    },
-  },
-  {
-    id: "2",
-    name: "aadhar_card.pdf",
-    type: "ID_Card",
-    size: "1.1 MB",
-    status: "review",
-    confidence: 0.72,
-    extractedData: {
-      Name: "Rahul Kumar Sharma",
-      "ID Number": "XXXX-XXXX-4567",
-    },
-    reason: "Name mismatch: 'Rahul Kumar Sharma' vs admission record 'Rahul Sharma'",
-  },
-  {
-    id: "3",
-    name: "passport_photo.jpg",
-    type: "Photo",
-    size: "856 KB",
-    status: "approved",
-    confidence: 0.95,
-  },
-];
-
 const statusConfig = {
   idle: { label: "Ready", color: "text-muted-foreground", bg: "bg-secondary", icon: FileImage },
   uploading: { label: "Uploading...", color: "text-chart-1", bg: "bg-chart-1/10", icon: Loader2 },
@@ -75,54 +37,112 @@ const statusConfig = {
   rejected: { label: "Rejected", color: "status-red", bg: "bg-status-red", icon: XCircle },
 };
 
+const mapBackendStatus = (status: string): DocStatus => {
+  const statusMap: Record<string, DocStatus> = {
+    pending: "processing",
+    green: "approved",
+    yellow: "review",
+    red: "rejected",
+  };
+  return statusMap[status] || "processing";
+};
+
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<Document[]>(mockDocuments);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [loading, setLoading] = useState(true);
+  
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  const fetchDocuments = async () => {
+    try {
+      setLoading(true);
+      const response = await api.documents.getAll();
+      console.log("Fetch documents response:", response);
+      
+      // Try both possible response structures
+      const docsData = response?.data?.documents || response?.data?.data?.documents || [];
+      
+      if (!Array.isArray(docsData)) {
+        console.error("Invalid documents data:", docsData);
+        setDocuments([]);
+        return;
+      }
+      
+      const docs = docsData.map((doc: any) => ({
+        id: doc.id || `temp-${Date.now()}`,
+        name: doc.fileName || doc.name || 'Unknown',
+        type: doc.documentType || doc.type || 'other',
+        size: formatFileSize(doc.fileSize || 0),
+        status: mapBackendStatus(doc.verificationStatus || doc.status || 'processing'),
+        confidence: doc.confidence,
+        extractedData: doc.extractedData,
+        reason: doc.rejectionReason || doc.validationIssues?.join(", "),
+      }));
+      setDocuments(docs);
+    } catch (error) {
+      console.error("Failed to fetch documents:", error);
+      setDocuments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  };
 
   const simulateUpload = useCallback(
-    (file: File) => {
+    async (file: File) => {
       const newDoc: Document = {
         id: Date.now().toString(),
         name: file.name,
         type: file.name.includes("mark")
-          ? "Marksheet"
+          ? "marksheet_10th"
           : file.name.includes("id") || file.name.includes("aadhar")
-          ? "ID_Card"
-          : "Document",
+          ? "id_proof"
+          : "other",
         size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
         status: "uploading",
       };
 
       setDocuments((prev) => [newDoc, ...prev]);
 
-      // Simulate upload
-      setTimeout(() => {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("documentType", newDoc.type);
+
         setDocuments((prev) =>
           prev.map((d) =>
             d.id === newDoc.id ? { ...d, status: "processing" as DocStatus } : d
           )
         );
 
-        // Simulate AI processing
-        setTimeout(() => {
-          setDocuments((prev) =>
-            prev.map((d) =>
-              d.id === newDoc.id
-                ? {
-                    ...d,
-                    status: "approved" as DocStatus,
-                    confidence: 0.94,
-                    extractedData: {
-                      Name: "Rahul Sharma",
-                      Type: "Verified Document",
-                      Status: "Valid",
-                    },
-                  }
-                : d
-            )
-          );
-        }, 2000);
-      }, 1500);
+        const response = await api.documents.upload(formData);
+        
+        // Just refresh the list - don't try to parse the response
+        await fetchDocuments();
+        
+        // Remove the temporary document
+        setDocuments((prev) => prev.filter((d) => d.id !== newDoc.id));
+      } catch (error: any) {
+        console.error("Upload failed:", error);
+        setDocuments((prev) => prev.filter((d) => d.id !== newDoc.id));
+        alert(`Upload failed: ${error.response?.data?.error || error.message}`);
+      }
     },
     []
   );
@@ -145,9 +165,22 @@ export default function DocumentsPage() {
     [simulateUpload]
   );
 
-  const removeDoc = (id: string) => {
-    setDocuments((prev) => prev.filter((d) => d.id !== id));
+  const removeDoc = async (id: string) => {
+    try {
+      await api.documents.delete(id);
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+    } catch (error) {
+      console.error("Failed to delete document:", error);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="gradient-mesh min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="gradient-mesh min-h-screen px-6 py-10">
@@ -174,23 +207,25 @@ export default function DocumentsPage() {
 
         {/* Upload zone */}
         <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={() => setDragActive(false)}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
           onDrop={handleDrop}
           className={`mb-10 rounded-3xl border-2 border-dashed p-12 text-center transition-all ${
             dragActive
-              ? "border-chart-1 bg-chart-1/5"
+              ? "border-chart-1 bg-chart-1/10 scale-[1.02] shadow-lg"
               : "border-border/50 bg-card/50 hover:border-border neu-pressed"
           }`}
         >
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-            <Upload className="h-8 w-8 text-muted-foreground" />
+          <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl transition-all ${
+            dragActive ? "bg-chart-1/20 scale-110" : "bg-secondary"
+          }`}>
+            <Upload className={`h-8 w-8 transition-all ${
+              dragActive ? "text-chart-1 animate-bounce" : "text-muted-foreground"
+            }`} />
           </div>
           <h3 className="text-lg font-semibold">
-            Drop documents here or click to upload
+            {dragActive ? "Drop files here!" : "Drop documents here or click to upload"}
           </h3>
           <p className="mt-2 text-sm text-muted-foreground">
             Supports JPG, PNG, PDF — Marksheets, ID Cards, Certificates
@@ -266,7 +301,7 @@ export default function DocumentsPage() {
                       )}
 
                       {/* Extracted data */}
-                      {doc.extractedData && (
+                      {doc.extractedData && Object.keys(doc.extractedData).length > 0 && (
                         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 rounded-xl bg-secondary/50 p-4 sm:grid-cols-3">
                           {Object.entries(doc.extractedData).map(([key, val]) => (
                             <div key={key}>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, BookOpen } from "lucide-react";
+import { Send, Bot, User, Sparkles, BookOpen, Loader2 } from "lucide-react";
+import api from "@/lib/api";
 
 type Message = {
   id: string;
@@ -11,53 +12,6 @@ type Message = {
   timestamp: Date;
 };
 
-const initialMessages: Message[] = [
-  {
-    id: "1",
-    role: "assistant",
-    content:
-      "Hi Rahul! I'm P.A.L., your personal campus assistant. I have access to your college handbook, syllabus, and onboarding guides. Ask me anything about campus life, deadlines, or academics!",
-    timestamp: new Date(),
-  },
-];
-
-const sampleResponses: Record<string, { reply: string; sources: string[] }> = {
-  subjects: {
-    reply:
-      "Based on your CS branch and 1st year curriculum, your core subjects this semester are:\n\n1. **Engineering Mathematics I**\n2. **Physics for Engineers**\n3. **Introduction to Programming (C)**\n4. **Engineering Drawing**\n5. **Communication Skills**\n\nYou also have 2 elective slots. I'd recommend checking the elective list — would you like me to pull that up?",
-    sources: ["cs_syllabus_2026.pdf", "academic_calendar.pdf"],
-  },
-  fee: {
-    reply:
-      "Your CS branch fee deadline is **October 12th, 2026**. Here's the breakdown:\n\n- Tuition Fee: ₹85,000 *(Paid ✓)*\n- Hostel Fee: ₹35,000 *(Pending)*\n- Lab Fee: ₹12,000 *(Pending)*\n\n**Total Pending: ₹47,000**\n\nYou can pay via the college ERP portal or at the accounts office (Building A, Room 102).",
-    sources: ["fee_structure_2026.pdf"],
-  },
-  hostel: {
-    reply:
-      "Hostel allotment for 1st year CS students typically happens after fee payment is complete. Based on the current timeline:\n\n- **Room preferences open:** Oct 15th\n- **Allotment results:** Oct 18th\n- **Move-in dates:** Oct 20-22nd\n\nYou'll be in Block C or D (first-year blocks). Would you like to know about hostel rules or the mess menu?",
-    sources: ["hostel_guidelines_2026.pdf", "campus_handbook.pdf"],
-  },
-  default: {
-    reply:
-      "I do not have this specific information in my knowledge base. Please contact the admin desk at **admin@college.edu** or visit the Student Services Office (Building A, Ground Floor) for assistance.",
-    sources: [],
-  },
-};
-
-function getResponse(message: string) {
-  const lower = message.toLowerCase();
-  if (lower.includes("subject") || lower.includes("course") || lower.includes("syllabus")) {
-    return sampleResponses.subjects;
-  }
-  if (lower.includes("fee") || lower.includes("payment") || lower.includes("deadline")) {
-    return sampleResponses.fee;
-  }
-  if (lower.includes("hostel") || lower.includes("room") || lower.includes("accommodation")) {
-    return sampleResponses.hostel;
-  }
-  return sampleResponses.default;
-}
-
 const quickActions = [
   "What are my core subjects?",
   "When is the fee deadline?",
@@ -65,10 +19,28 @@ const quickActions = [
 ];
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const init = async () => {
+      if (mounted) {
+        await initializeChat();
+      }
+    };
+    
+    init();
+    
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -77,35 +49,113 @@ export default function ChatPage() {
     });
   }, [messages, isTyping]);
 
+  const initializeChat = async () => {
+    setLoading(true);
+    
+    try {
+      // Try to get existing conversations
+      const conversationsRes = await api.chat.getConversations(1);
+      
+      if (conversationsRes?.data?.conversations?.length > 0) {
+        const conv = conversationsRes.data.conversations[0];
+        setConversationId(conv.id);
+        
+        // Try to load messages
+        try {
+          const messagesRes = await api.chat.getMessages(conv.id);
+          if (messagesRes?.data?.messages) {
+            const formattedMessages = messagesRes.data.messages.map((msg: any) => ({
+              id: msg.id,
+              role: msg.role,
+              content: msg.content,
+              sources: msg.sources,
+              timestamp: new Date(msg.timestamp),
+            }));
+            setMessages(formattedMessages);
+          }
+        } catch (e) {
+          console.error("Failed to load messages:", e);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to initialize chat:", error);
+    }
+    
+    // Always show welcome message if no messages
+    setMessages(prev => {
+      if (prev.length === 0) {
+        return [{
+          id: "welcome",
+          role: "assistant",
+          content: "Hi! I'm P.A.L., your personal campus assistant. Ask me anything!",
+          timestamp: new Date(),
+        }];
+      }
+      return prev;
+    });
+    
+    setLoading(false);
+  };
+
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
-
+    
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
       content: text,
       timestamp: new Date(),
     };
-
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
+    
+    try {
+      let activeConvId = conversationId;
+      
+      if (!activeConvId) {
+        const newConvRes = await api.chat.createConversation("Campus Assistant Chat");
+        // Try both possible response structures
+        activeConvId = newConvRes?.data?.conversation?.id || newConvRes?.data?.data?.conversation?.id;
+        
+        if (!activeConvId) {
+          console.error("No conversation ID in response:", newConvRes);
+          throw new Error("Invalid conversation response");
+        }
+        
+        setConversationId(activeConvId);
+      }
 
-    // Simulate AI response delay
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    const response = getResponse(text);
-    const assistantMsg: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: response.reply,
-      sources: response.sources,
-      timestamp: new Date(),
-    };
-
-    setIsTyping(false);
-    setMessages((prev) => [...prev, assistantMsg]);
+      const response = await api.chat.sendMessage(activeConvId, text);
+      const data = response?.data?.data || response?.data;
+      
+      setMessages((prev) => [...prev, {
+        id: data?.messageId || (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data?.response || data?.message?.content || "Sorry, I couldn't process that.",
+        sources: data?.sources,
+        timestamp: new Date(),
+      }]);
+    } catch (error: any) {
+      console.error("Send error:", error);
+      setMessages((prev) => [...prev, {
+        id: (Date.now() + 2).toString(),
+        role: "assistant",
+        content: `Error: ${error.message}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setIsTyping(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">

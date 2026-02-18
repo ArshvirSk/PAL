@@ -126,9 +126,81 @@ export class AuthService {
 
   /**
    * Verify OTP and generate JWT tokens
+   * TEST MODE: Auto-create user if doesn't exist in development
    */
   async verifyOTP(admissionNumber: string, otp: string): Promise<AuthTokens | null> {
     try {
+      // TEST MODE: In development, accept any OTP and auto-create user
+      if (process.env.NODE_ENV === 'development') {
+        logger.info(`TEST MODE: Auto-login for ${admissionNumber}`);
+        
+        // Check if user exists by admission number
+        let user = await UserRepository.findByAdmissionNumber(admissionNumber);
+        
+        // If not found by admission number, try by email (in case admission number format differs)
+        if (!user) {
+          const testEmail = `${admissionNumber.toLowerCase()}@test.com`;
+          user = await UserRepository.findByEmail(testEmail);
+        }
+        
+        // If user doesn't exist, create them
+        if (!user) {
+          const isAdmin = admissionNumber.toUpperCase().includes('ADMIN');
+          const role = isAdmin ? 'admin' : 'student';
+          
+          logger.info(`TEST MODE: Creating new ${role} user: ${admissionNumber}`);
+          
+          try {
+            // Create user in database
+            const { data, error} = await supabaseAdmin
+              .from('users')
+              .insert({
+                admission_number: admissionNumber,
+                name: isAdmin ? `Admin ${admissionNumber}` : `Student ${admissionNumber}`,
+                email: `${admissionNumber.toLowerCase()}@test.com`,
+                phone: `+91${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+                role: role,
+                branch: isAdmin ? 'Administration' : 'Computer Science',
+                batch: isAdmin ? '2026' : '2026',
+                current_phase: isAdmin ? null : 'Document Verification',
+                enrollment_date: new Date().toISOString()
+              })
+              .select()
+              .single();
+            
+            if (error) {
+              logger.error('Error creating test user:', error);
+              // If duplicate email, try to find the existing user
+              if (error.code === '23505') {
+                const testEmail = `${admissionNumber.toLowerCase()}@test.com`;
+                user = await UserRepository.findByEmail(testEmail);
+                if (!user) {
+                  return null;
+                }
+              } else {
+                return null;
+              }
+            } else {
+              user = data as User;
+            }
+          } catch (createError) {
+            logger.error('Exception creating test user:', createError);
+            return null;
+          }
+        }
+        
+        // Generate tokens
+        const tokens = this.generateTokens(user);
+        
+        logger.info(`TEST MODE: User authenticated: ${user.id}`);
+        
+        return {
+          ...tokens,
+          user
+        };
+      }
+      
+      // PRODUCTION MODE: Normal OTP verification
       // Get stored OTP
       const otpKey = `otp:${admissionNumber}`;
       const storedOTP = await this.getOTP(otpKey);
@@ -264,11 +336,21 @@ export class AuthService {
    */
   async validateSession(userId: string): Promise<boolean> {
     try {
+      // In development mode without Redis, skip session validation
+      if (process.env.NODE_ENV === 'development' && !isRedisAvailable()) {
+        logger.info(`TEST MODE: Skipping session validation for ${userId}`);
+        return true;
+      }
+
       const refreshKey = `refresh:${userId}`;
       const token = await this.getOTP(refreshKey);
       return token !== null;
     } catch (error) {
       logger.error('Error validating session:', error);
+      // In development, allow access even if validation fails
+      if (process.env.NODE_ENV === 'development') {
+        return true;
+      }
       return false;
     }
   }

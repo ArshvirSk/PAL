@@ -77,9 +77,26 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       file
     });
 
+    // Format document for frontend
+    const formattedDoc = {
+      id: document.id,
+      fileName: file.originalname,
+      documentType: document.document_type,
+      fileSize: file.size,
+      verificationStatus: document.status,
+      confidence: document.confidence,
+      extractedData: document.extracted_data,
+      validationIssues: [],
+      rejectionReason: document.review_notes,
+      uploadedAt: document.uploaded_at,
+      verifiedAt: document.verified_at
+    };
+
     res.status(201).json({
       success: true,
-      data: document,
+      data: {
+        document: formattedDoc
+      },
       message: 'Document uploaded successfully. Processing will begin shortly.'
     });
   } catch (error: any) {
@@ -100,9 +117,37 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const documents = await DocumentService.getUserDocuments(userId);
 
+    // Format documents for frontend
+    const formattedDocs = documents.map((doc: any) => {
+      // Extract filename from URL
+      let fileName = doc.document_type;
+      if (doc.original_file_url) {
+        const urlParts = doc.original_file_url.split('/');
+        const fileNameWithTimestamp = urlParts[urlParts.length - 1];
+        // Remove timestamp prefix (e.g., "1234567890_filename.jpg" -> "filename.jpg")
+        fileName = fileNameWithTimestamp.replace(/^\d+_/, '') || doc.document_type;
+      }
+      
+      return {
+        id: doc.id,
+        fileName: fileName,
+        documentType: doc.document_type,
+        fileSize: 0, // Not stored in DB
+        verificationStatus: doc.status,
+        confidence: doc.confidence,
+        extractedData: doc.extracted_data,
+        validationIssues: doc.validation_results?.validation?.errors || [],
+        rejectionReason: doc.review_notes,
+        uploadedAt: doc.uploaded_at,
+        verifiedAt: doc.verified_at
+      };
+    });
+
     res.json({
       success: true,
-      data: documents
+      data: {
+        documents: formattedDocs
+      }
     });
   } catch (error: any) {
     logger.error('Error fetching documents:', error);
@@ -122,7 +167,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.user!.userId;
 
-    const document = await DocumentService.getDocument(id);
+    const document = await DocumentService.getDocument(id as string);
 
     if (!document) {
       return res.status(404).json({

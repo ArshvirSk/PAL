@@ -204,6 +204,16 @@
   animation: float-pulse 4s ease-in-out infinite;
 }
 
+/* Slow pulse for AI button */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
 /* Status colors */
 .status-green { color: oklch(0.65 0.20 150); }
 .status-yellow { color: oklch(0.80 0.18 85); }
@@ -216,4 +226,14 @@
 /* Hide Next.js error overlay portal */
 nextjs-portal {
   display: none !important;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

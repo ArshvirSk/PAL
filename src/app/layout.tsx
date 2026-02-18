@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { VisualEditsMessenger } from "orchids-visual-edits";
 import { Navbar } from "@/components/navbar";
+import { TokenCleaner } from "@/components/token-cleaner";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,8 +32,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans`}
       >
-        <Navbar />
-        <main className="min-h-screen">{children}</main>
+        <ThemeProvider>
+          <TokenCleaner />
+          <Navbar />
+          <main className="min-h-screen">{children}</main>
+        </ThemeProvider>
         <VisualEditsMessenger />
       </body>
     </html>
